@@ -1,0 +1,69 @@
+# Original version by Gabriele Lana. See https://github.com/gabrielelana/katas/blob/master/string_calculator_erlang/rakefile
+
+require "rake/clean"
+require 'fileutils'
+
+CLEAN.include("ebin")
+SOURCE = FileList[ "src/*.erl" ]
+MODULES = SOURCE.pathmap("%{src,ebin}X.beam")
+
+SHELL_FLAGS = "+K true"
+COMPILER_FLAGS = "-I include -Wall"
+
+directory "ebin"
+verbose(false)
+
+desc "compile all source *.erl files under src/"
+task :compile => [ "ebin" ] + MODULES
+rule ".beam" => [ "%{ebin,src}X.erl", "%{ebin,test}X.hrl" ] do | task |
+  puts "compile: #{task.source}"
+  sh "erlc -pa ebin -DTEST -W #{COMPILER_FLAGS} -o ebin #{task.source}"
+end
+
+desc "run tests for all modules under ebin/"
+task :test => [ :compile ] do
+  MODULES.each do | module_file |
+    module_name = File.basename(module_file, ".beam")
+    if File.exist?("test/#{module_name}.hrl")
+      puts "module: #{module_name}"
+      sh "erl -noshell -pa ebin -run #{module_name} test -run init stop"
+      puts "---"
+    end
+  end
+end
+
+task :shell => [ :compile ] do
+  sh "erl #{SHELL_FLAGS} -pa ebin"
+end
+
+desc "create module src and test files"
+task :create, :module do |t, args|
+  mod = args[:module]
+
+  FileUtils.mkdir 'src' unless Dir.exists?('src')
+  FileUtils.mkdir 'test' unless Dir.exists?('test')
+
+  File.open("src/#{mod}.erl", 'w') do |f|
+    f.puts <<-SRC
+-module(#{mod}).
+-export([]).
+
+-ifdef(TEST).
+-include_lib("../test/#{mod}.hrl").
+-endif.
+    SRC
+  end
+
+  File.open("test/#{mod}.hrl", 'w') do |f|
+    f.puts <<-TEST
+-include_lib("eunit/include/eunit.hrl").
+
+assert_the_truth_test() ->
+  ?assertEqual(true, true).
+    TEST
+  end
+
+  puts "Files for module #{mod} created."
+end
+
+task :default => :compile
